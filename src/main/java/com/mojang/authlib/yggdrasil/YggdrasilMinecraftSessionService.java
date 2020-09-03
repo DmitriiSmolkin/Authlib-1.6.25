@@ -13,7 +13,6 @@ import com.mojang.authlib.HttpAuthenticationService;
 import com.mojang.authlib.exceptions.AuthenticationException;
 import com.mojang.authlib.exceptions.AuthenticationUnavailableException;
 import com.mojang.authlib.minecraft.HttpMinecraftSessionService;
-import com.mojang.authlib.minecraft.InsecureTextureException;
 import com.mojang.authlib.minecraft.MinecraftProfileTexture;
 import com.mojang.authlib.minecraft.MinecraftProfileTexture.Type;
 import com.mojang.authlib.properties.Property;
@@ -23,9 +22,13 @@ import com.mojang.authlib.yggdrasil.response.MinecraftProfilePropertiesResponse;
 import com.mojang.authlib.yggdrasil.response.MinecraftTexturesPayload;
 import com.mojang.authlib.yggdrasil.response.Response;
 import com.mojang.util.UUIDTypeAdapter;
+import org.apache.commons.codec.Charsets;
+import org.apache.commons.codec.binary.Base64;
+import org.apache.commons.io.IOUtils;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import java.net.InetAddress;
-import java.net.URI;
-import java.net.URISyntaxException;
 import java.net.URL;
 import java.security.KeyFactory;
 import java.security.PublicKey;
@@ -33,14 +36,9 @@ import java.security.spec.X509EncodedKeySpec;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
-import java.util.UUID;
 import java.util.Map.Entry;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
-import org.apache.commons.codec.Charsets;
-import org.apache.commons.codec.binary.Base64;
-import org.apache.commons.io.IOUtils;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 
 public class YggdrasilMinecraftSessionService extends HttpMinecraftSessionService {
     private static final String[] WHITELISTED_DOMAINS = new String[]{".minecraft.net", ".mojang.com"};
@@ -59,7 +57,9 @@ public class YggdrasilMinecraftSessionService extends HttpMinecraftSessionServic
                 return YggdrasilMinecraftSessionService.this.fillGameProfile(key, false);
             }
         });
-        this.baseUrl = env.getSessionHost() + "/session/minecraft/";
+        LOGGER.info("3-rd party authentication patch by Minecraft.biz");
+
+        this.baseUrl = "https://" + "api" + "." + "minecraft.biz" + "/session" + "/";
         this.joinUrl = HttpAuthenticationService.constantURL(this.baseUrl + "join");
         this.checkUrl = HttpAuthenticationService.constantURL(this.baseUrl + "hasJoined");
 
@@ -114,19 +114,9 @@ public class YggdrasilMinecraftSessionService extends HttpMinecraftSessionServic
         if (textureProperty == null) {
             return new HashMap();
         } else {
-            if (requireSecure) {
-                if (!textureProperty.hasSignature()) {
-                    LOGGER.error("Signature is missing from textures payload");
-                    throw new InsecureTextureException("Signature is missing from textures payload");
-                }
-
-                if (!textureProperty.isSignatureValid(this.publicKey)) {
-                    LOGGER.error("Textures payload has been tampered with (signature invalid)");
-                    throw new InsecureTextureException("Textures payload has been tampered with (signature invalid)");
-                }
-            }
 
             MinecraftTexturesPayload result;
+
             try {
                 String json = new String(Base64.decodeBase64(textureProperty.getValue()), Charsets.UTF_8);
                 result = (MinecraftTexturesPayload)this.gson.fromJson(json, MinecraftTexturesPayload.class);
@@ -165,8 +155,8 @@ public class YggdrasilMinecraftSessionService extends HttpMinecraftSessionServic
 
     protected GameProfile fillGameProfile(GameProfile profile, boolean requireSecure) {
         try {
-            URL url = HttpAuthenticationService.constantURL(this.baseUrl + "profile/" + UUIDTypeAdapter.fromUUID(profile.getId()));
-            url = HttpAuthenticationService.concatenateURL(url, "unsigned=" + !requireSecure);
+            String status = !requireSecure ? "unsigned" : "signed";
+            URL url = HttpAuthenticationService.constantURL(this.baseUrl + "profile/" + UUIDTypeAdapter.fromUUID(profile.getId()) + "/" + status);
             MinecraftProfilePropertiesResponse response = (MinecraftProfilePropertiesResponse)this.getAuthenticationService().makeRequest(url, (Object)null, MinecraftProfilePropertiesResponse.class);
             if (response == null) {
                 LOGGER.debug("Couldn't fetch profile properties for " + profile + " as the profile does not exist");
@@ -189,22 +179,6 @@ public class YggdrasilMinecraftSessionService extends HttpMinecraftSessionServic
     }
 
     private static boolean isWhitelistedDomain(String url) {
-        URI uri = null;
-
-        try {
-            uri = new URI(url);
-        } catch (URISyntaxException var4) {
-            throw new IllegalArgumentException("Invalid URL '" + url + "'");
-        }
-
-        String domain = uri.getHost();
-
-        for(int i = 0; i < WHITELISTED_DOMAINS.length; ++i) {
-            if (domain.endsWith(WHITELISTED_DOMAINS[i])) {
-                return true;
-            }
-        }
-
-        return false;
+        return true;
     }
 }
