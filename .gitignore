@@ -1,0 +1,7 @@
+.idea/
+target/generated-sources/
+target/maven-archiver/
+target/maven-status/
+target/authlib-1.6.25-PATCH.jar
+target/classes/authlib-1.6.25.jar
+authlib-1.6.25.iml
